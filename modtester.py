@@ -53,6 +53,15 @@ def printSingleSummary(mod_info):
     for y in mod_info['dependencies']:
         print('  - '+y)
         
+def printStatus(temp):
+    try:
+        printSingleSummary(mod_filename_cache[temp])
+    except KeyError:
+        try:
+            printSingleSummary(mod_id_cache[temp])
+        except KeyError:
+            for x in mod_filename_cache:
+                printSingleSummary(mod_filename_cache[x])
 
 while True:
     print('> ', end='')
@@ -67,14 +76,7 @@ while True:
     elif command in COMMANDS['STATUS']:
         print("Enter a modId, filename, or push enter for a generic listing.")
         temp = input()
-        try:
-            printSingleSummary(mod_filename_cache[temp])
-        except KeyError:
-            try:
-                printSingleSummary(mod_id_cache[temp])
-            except KeyError:
-                for x in mod_filename_cache:
-                    printSingleSummary(mod_filename_cache[x])
+        printStatus(temp)
     else:
         print("Unrecognized command.")
 # Done
@@ -99,3 +101,5 @@ while True:
 
 # Command to print path
 # and to change path
+
+#  Command to swap the halves of mods moved
