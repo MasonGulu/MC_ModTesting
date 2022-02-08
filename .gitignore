@@ -1,2 +1,2 @@
-extractedTomls/*
-inactiveMods/*
+extractedTomls/*.jar
+inactiveMods/*.jar
