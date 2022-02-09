@@ -7,7 +7,7 @@ import csv
 
 EXTRACTED_TOML_FOLDER = 'extractedTomls/'
 DISABLED_MODS = 'inactiveMods/'
-VERSION = '0.10'
+VERSION = '0.20'
 
 sg.theme('SystemDefault')
 
@@ -21,7 +21,7 @@ try:
 except FileExistsError:
     pass 
 
-MOD_PATH = sg.PopupGetFolder('Select your mods folder.') + '/'
+MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='/home/mason/.local/share/multimc/instances/TheRealm/.minecraft/mods') + '/'
 
 # Example mod_filename_cache
 # mod_filename_cache = {
@@ -198,7 +198,7 @@ columns[3] = [[sg.Text('Filename:')],[sg.Text('',size=(DEFAULT_WIDTH,1),key='ENA
                 [sg.Button(button_text='Add New', key='ENABLED_button_to_add_dependency'), sg.Button(button_text='Remove', key='ENABLED_button_to_remove_dependency')]]
 
 menu_bar = [['Important!', ['Refresh Cache', 'Reset Keep Flags']],
-            ['File', ['Save...NOT IMPLEMENTED', 'Load...NOT IMPLEMENTED']],
+            ['File', ['Save...', 'Load...']],
             ['Move All Unknown', ['To Enabled','To Disabled']],
             ['Operations', ['Add New Half', 'Swap Halves', 'Mark Active Keep']],
             ['Help', ['How To Use', 'About']]]
@@ -228,10 +228,37 @@ while True:
             mod_id_cache[x]['confirmedWorking'] = False
 
     elif event == 'Save...':
-        pass # TODO
+        filename = sg.PopupGetFile('Choose a file to save your state.', save_as=True)
+        if filename != None:
+            with open(filename, 'w') as csvfile:
+                w = csv.writer(csvfile)
+                temp = []
+                for x in mod_id_cache:
+                    temp.append(x)
+                    temp.append(mod_id_cache[x]['confirmedWorking'])
+                w.writerow(temp)
+                temp = []
+                for x in mods_added:
+                    temp.append(x)
+                w.writerow(temp)
 
     elif event == 'Load...':
-        pass # TODO
+        filename = sg.PopupGetFile('Choose a file to load a state.')
+        if filename != None:
+            try:
+                with open(filename, 'r') as csvfile:
+                    r = csv.reader(csvfile)
+                    temp = []
+                    for row in r:
+                        temp.append(row)
+                    for x in range(0, len(temp[0]), 2):
+                        mod_id_cache[temp[0][x]]['confirmedWorking'] = (temp[0][x+1] == 'True')
+                        mod_filename_cache[mod_id_cache[temp[0][x]]['filename']]['confirmedWorking'] = (temp[0][x+1] == 'True')
+                    mods_added = []
+                    for x in temp[1]:
+                        mods_added.append(x)
+            except:
+                print("!! An issue occured loading!")
 
     elif event == 'To Enabled':
         addAllMods()
