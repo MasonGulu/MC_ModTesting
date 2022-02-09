@@ -22,5 +22,3 @@ To get around this crash, I disable all mods, this however leaves behind the mod
 # Requirements
 * toml
 * PySimpleGUI
-
-You MUST add an extractedTomls folder and inactiveMods folder to the same directory as modtester.py
