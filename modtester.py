@@ -21,7 +21,7 @@ try:
 except FileExistsError:
     pass 
 
-MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='/home/mason/.local/share/multimc/instances/TheRealm/.minecraft/mods') + '/'
+MOD_PATH = sg.PopupGetFolder('Select your mods folder.') + '/'
 
 # Example mod_filename_cache
 # mod_filename_cache = {
