@@ -2,14 +2,26 @@ import toml
 from zipfile import ZipFile as zf
 import os
 import random
+import PySimpleGUI as sg
+import csv
 
 EXTRACTED_TOML_FOLDER = 'extractedTomls/'
 DISABLED_MODS = 'inactiveMods/'
+VERSION = '0.10'
 
-print("Please enter the full path to Minecraft's mod folder.")
-print("The path MUST end with a / or \\, depending on the OS")
-print('An example path is /home/mason/.local/share/multimc/instances/TheRealm/.minecraft/mods/')
-MOD_PATH = input()
+sg.theme('SystemDefault')
+
+try:
+    os.mkdir(EXTRACTED_TOML_FOLDER)
+except FileExistsError:
+    pass
+
+try:
+    os.mkdir(DISABLED_MODS)
+except FileExistsError:
+    pass 
+
+MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='/home/mason/.local/share/multimc/instances/TheRealm/.minecraft/mods') + '/'
 
 # Example mod_filename_cache
 # mod_filename_cache = {
@@ -29,8 +41,8 @@ mod_id_cache = {
 
 }
 
-def cacheMod(modFilename):
-    with zf(MOD_PATH+modFilename) as z:
+def cacheMod(path,modFilename):
+    with zf(path+modFilename) as z:
         z.extract('META-INF/mods.toml', EXTRACTED_TOML_FOLDER+modFilename)
     temp = toml.load(EXTRACTED_TOML_FOLDER+modFilename+'/META-INF/mods.toml')
     tempId = temp['mods'][0]['modId']
@@ -77,11 +89,14 @@ def verifyDependancies():
     print('Verifying dependancies..')
     activemods = []
     for x in os.listdir(MOD_PATH):
-        activemods.append(mod_filename_cache[x]['modId'])
+        try:
+            activemods.append(mod_filename_cache[x]['modId'])
+        except KeyError:
+            print('WARNING: Cache is out of date!')
     for x in activemods:
         for y in mod_id_cache[x]['dependencies']:
             if y not in activemods:
-                print(x+' requires '+y+'. Checking if mod is just disabled..')
+                print(x+' requires '+y+'. Attempting to reenable..')
                 if not addModByID(y):
                     print('!!! Mod '+y+' not found. Aborting.')
                     return 
@@ -132,162 +147,223 @@ def addHalf():
         os.replace(DISABLED_MODS+x, MOD_PATH+x)
     verifyDependancies()
 
-COMMANDS = {
-    'QUIT': ['q','quit','exit'],
-    'REGENCACHE': ['rc'],
-    'STATUS': ['s'],
-    'SWAP': ['swap'],
-    'REMOVEALL': ['removeall'],
-    'ADDALL': ['addall'],
-    'SAFE': ['safe', 'works'],
-    'KEEPMOD': ['keep'],
-    'RESETWORKING': ['resetworking'],
-    'ADDHALF': ['addhalf'],
-    'HELP': ['help', 'h'],
-    'MANUALDEPENDENCY': ['mdep'],
-    'REMOVEDEPENDENCY': ['rdep']
-}
+def cacheAll():
+    mods = os.listdir(MOD_PATH)
+    dmods = os.listdir(DISABLED_MODS)
+    layout = [[sg.Text('',key='modname', size=(20,1))],
+                [sg.ProgressBar(len(mods)+len(dmods), orientation='h', size=(20,20),key='bar')]]
+    win = sg.Window('Caching Mods...', layout=layout, finalize=True)
+    i = 0
+    for x in mods:
+        i += 1
+        win['modname'].update(x)
+        win['bar'].UpdateBar(i)
+        cacheMod(MOD_PATH,x)
+    for x in dmods:
+        i += 1
+        win['modname'].update(x)
+        win['bar'].UpdateBar(i)
+        cacheMod(DISABLED_MODS,x)
+    win.close()
 
-def help():
-    print('Quit - quits the program')
-    print(COMMANDS['QUIT'])
-    print('')
-    print('Regen cache - gathers dependancy and modId information from all mods in the mods folder.')
-    print(COMMANDS['REGENCACHE'])
-    print('')
-    print('Status - prints information about mods')
-    print(COMMANDS['STATUS'])
-    print('')
-    print('Remove all - removes all mods from the mods folder, excluding mods marked as working')
-    print(COMMANDS['REMOVEALL'])
-    print('')
-    print('Swap - swap the half of mods added last, with the half that was left behind.')
-    print(COMMANDS['SWAP'])
-    print('')
-    print('Add all - adds all mods from the inactive folder to the mods folder')
-    print(COMMANDS['ADDALL'])
-    print('')
-    print('Safe - marks all current mods as working/safe, forces them to stay in the mods folder')
-    print(COMMANDS['SAFE'])
-    print('')
-    print('Keep mod - marks a specific mod as working/safe, forces it to stay in the mods folder')
-    print(COMMANDS['KEEPMOD'])
-    print('')
-    print('Reset working - resets the safe/working status of ALL mods')
-    print(COMMANDS['RESETWORKING'])
-    print('')
-    print('Add half - adds a random half of the mods from the inactive folder to the active folder, swap can swap the half taken')
-    print(COMMANDS['ADDHALF'])
-    print('')
-    print('Help')
-    print(COMMANDS['HELP'])
-    print('')
-    print('Manual Dependency - add a dependency manually')
-    print(COMMANDS['MANUALDEPENDENCY'])
-    print('')
-    print('Remove dependency - remove a dependency manually')
-    print(COMMANDS['REMOVEDEPENDENCY'])
+
+def updateFilelists():
+    win['DISABLED_filelist'].update(values=os.listdir(DISABLED_MODS))
+    win['ENABLED_filelist'].update(values=os.listdir(MOD_PATH))
+    win.finalize()
+
+DEFAULT_WIDTH = 30
+
+columns = [[],[],[],[]]
+columns[0] = [[sg.Text('Disabled Mods')],[sg.Listbox(values=[],select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,size=(DEFAULT_WIDTH,20),key='DISABLED_filelist',enable_events=True)]]
+
+columns[1] = [[sg.Text('Filename:')],[sg.Text('',size=(DEFAULT_WIDTH,1),key='DISABLED_filename')],
+                [sg.Text('ModId:')], [sg.Text('',size=(DEFAULT_WIDTH,1),key='DISABLED_modId')],
+                [sg.Checkbox('Keep',default=False,key='DISABLED_keep', enable_events=True)],
+                [sg.Button(button_text='>>> Enable >>>',key='DISABLED_button_to_enable')],
+                [sg.Text('Dependencies:')],
+                [sg.Listbox(values=[],select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,size=(DEFAULT_WIDTH,5),key='DISABLED_dependencies')],
+                [sg.Input(size=(DEFAULT_WIDTH,1),key='DISABLED_input_for_new_dependency')],
+                [sg.Button(button_text='Add New', key='DISABLED_button_to_add_dependency'), sg.Button(button_text='Remove', key='DISABLED_button_to_remove_dependency')]]
+
+columns[2] = [[sg.Text('Enabled Mods')],[sg.Listbox(values=[],select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,size=(DEFAULT_WIDTH,20),key='ENABLED_filelist',enable_events=True)]]
+
+columns[3] = [[sg.Text('Filename:')],[sg.Text('',size=(DEFAULT_WIDTH,1),key='ENABLED_filename')],
+                [sg.Text('ModId:')], [sg.Text('',size=(DEFAULT_WIDTH,1),key='ENABLED_modId')],
+                [sg.Checkbox('Keep',default=False,key='ENABLED_keep', enable_events=True)],
+                [sg.Button(button_text='<<< Disable <<<',key='ENABLED_button_to_disable')],
+                [sg.Text('Dependencies:')],
+                [sg.Listbox(values=[],select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,size=(DEFAULT_WIDTH,5),key='ENABLED_dependencies')],
+                [sg.Input(size=(DEFAULT_WIDTH,1),key='ENABLED_input_for_new_dependency')],
+                [sg.Button(button_text='Add New', key='ENABLED_button_to_add_dependency'), sg.Button(button_text='Remove', key='ENABLED_button_to_remove_dependency')]]
+
+menu_bar = [['Important!', ['Refresh Cache', 'Reset Keep Flags']],
+            ['File', ['Save...NOT IMPLEMENTED', 'Load...NOT IMPLEMENTED']],
+            ['Move All Unknown', ['To Enabled','To Disabled']],
+            ['Operations', ['Add New Half', 'Swap Halves', 'Mark Active Keep']],
+            ['Help', ['How To Use', 'About']]]
+layout = [[sg.MenuBar(menu_bar)], [sg.Column(columns[0]),sg.Column(columns[1]),sg.VerticalSeparator(),sg.Column(columns[2]),sg.Column(columns[3])]]
+
+
+win = sg.Window('MC Mod Tester', layout=layout)
+
+win.finalize()
+updateFilelists()
+cacheAll()
 
 while True:
-    print('> ', end='')
-    command = input()
-
-    if command in COMMANDS['QUIT']:
+    event, values = win.read()
+    if event == sg.WIN_CLOSED or event == 'Exit':
         break
-    elif command in COMMANDS['REGENCACHE']:
-        for f in os.listdir(MOD_PATH):
-            print(f)
-            cacheMod(f)
-    elif command in COMMANDS['STATUS']:
-        print("Enter a modId, filename, or push enter for a generic listing.")
-        temp = input()
-        printStatus(temp)
-    elif command in COMMANDS['SWAP']:
-        swap()
-    elif command in COMMANDS['REMOVEALL']:
-        removeAllMods()
-    elif command in COMMANDS['ADDALL']:
-        addAllMods()
-    elif command in COMMANDS['SAFE']:
-        markAllAsSafe()
-    elif command in COMMANDS['KEEPMOD']:
-        print("Enter the modId or filename of the mod you want to keep active.")
-        temp = input()
-        try:
-            mod_filename_cache[temp]['confirmedWorking'] = True 
-            mod_id_cache[mod_filename_cache[temp]['modId']]['confirmedWorking'] = True 
-        except KeyError:
-            try:
-                mod_id_cache[temp]['confirmedWorking'] = True 
-                mod_filename_cache[mod_id_cache[temp]['filename']]['confirmedWorking'] = True 
-            except KeyError:
-                print("Invalid modId or filename.")
-    elif command in COMMANDS['RESETWORKING']:
+    # Every event should refresh the file listings
+
+    if event == 'Refresh Cache':
+        cacheAll()
+        updateFilelists()
+    
+    elif event == 'Reset Keep Flags':
         for x in mod_filename_cache:
             mod_filename_cache[x]['confirmedWorking'] = False
         for x in mod_id_cache:
-            mod_filename_cache[x]['confirmedWorking'] = False 
-    elif command in COMMANDS['ADDHALF']:
+            mod_id_cache[x]['confirmedWorking'] = False
+
+    elif event == 'Save...':
+        pass # TODO
+
+    elif event == 'Load...':
+        pass # TODO
+
+    elif event == 'To Enabled':
+        addAllMods()
+        updateFilelists()
+    
+    elif event == 'To Disabled':
+        removeAllMods()
+        updateFilelists()
+    
+    elif event == 'Add New Half':
         addHalf()
-    elif command in COMMANDS['HELP']:
-        help()
-    elif command in COMMANDS['MANUALDEPENDENCY']:
-        print("Enter the modId of the mod that requires a dependancy.")
-        temp = input()
-        print("Enter the modId of the dependancy")
-        tempId = input()
+        updateFilelists()
+
+    elif event == 'Swap Halves':
+        swap()
+        updateFilelists()
+
+    elif event == 'Mark Active Keep':
+        markAllAsSafe()
+
+    elif event == 'How To Use':
+        sg.PopupNoButtons("""
+        * First, when you launch the script a window will pop up, asking for your mod directory. Make sure to give the full path to where your mod folder (of the modpack you're testing) is located. Ensure there is not a / at the end of the directory.
+        * The cache will refresh. This extracts the mod dependancy information from every mod in the mods folder. This will reset any custom dependancy information and any keep flags you set. There is a button to do this manually [Important! > Refresh Cache], if ever required.
+        * Disable all mods (Move All Unknown > To Disabled).
+        * Add one half of the mods back (Operations > Add New Half) and test. If it works, move on. If it doesn't swap the halves (Operation > Swap Halves), this swaps which half is enabled.
+        * Mark all the active mods that work to be kept (Operations > Mark Active Keep), this prevents them being moved by mass operations. 
+        * Repeat until you have one mod left.
+
+        If you have a mod that's required to recreate the issue, or mods that are *known* good you can manually enable the keep flag, simply select the mod in the side menu, and check the keep box. If there's a mod that does not specify a required dependency as a dependency you can manually add the dependencies' modId, simply type it in the box underneath the dependency block and click add. Sometimes both halves may crash, in that case disable all mods, then enable a new half.
+        """, title='How To Use')
+
+    elif event == 'About':
+        sg.PopupNoButtons('Version '+VERSION+'\nWritten by Mason Gulu'+'\nhttps://github.com/MasonGulu/MC_ModTesting',title='About')
+
+    # Enabled Side Operations
+    elif event == 'ENABLED_filelist':
         try:
-            mod_id_cache[temp]['dependencies'].append(tempId)
-            mod_filename_cache[mod_id_cache[temp]['filename']]['dependencies'].append(tempId)
+            filename = values['ENABLED_filelist'][0]
+            win['ENABLED_filename'].update(filename)
+            win['ENABLED_modId'].update(mod_filename_cache[filename]['modId'])
+            win['ENABLED_keep'].update(mod_filename_cache[filename]['confirmedWorking'])
+            win['ENABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
+        except IndexError:
+            pass
         except KeyError:
-            print("Invalid filename.")
-    elif command in COMMANDS['REMOVEDEPENDENCY']:
-        print("Enter the modId of the mod you'd like to remove a dependency from.")
-        temp = input()
+            pass
+    
+    elif event == 'ENABLED_keep':
         try:
-            if len(mod_id_cache[temp]['dependencies']) == 0:
-                print('This mod does not have any dependencies')
-                break
-            print("Enter the index of the dependency you'd like to remove.")
-            i = 0
-            for x in mod_id_cache[temp]['dependencies']:
-                print(str(i) + ' ' + x)
-                i += 1
-            index = int(input())
-            mod_id_cache[temp]['dependencies'].pop(index)
-            mod_filename_cache[mod_id_cache[temp]['filename']]['dependencies'].pop(index)
+            filename = values['ENABLED_filelist'][0]
+            mod_filename_cache[filename]['confirmedWorking'] = values['ENABLED_keep']
+            mod_id_cache[mod_filename_cache[filename]['modId']]['confirmedWorking'] = values['ENABLED_keep']
+        except IndexError:
+            pass
         except KeyError:
-            print("Invalid modId.")
-        except ValueError:
-            print("Invalid number.")
-    else:
-        print("Unrecognized command.")
-# Done
-# Cache all modIds and filenames
-#    - command to regenerate cache of modIds and filenames
+            pass 
+    
+    elif event == 'ENABLED_button_to_disable':
+        try:
+            filename = values['ENABLED_filelist'][0]
+            os.replace(MOD_PATH+filename, DISABLED_MODS+filename)
+            verifyDependancies()
+            updateFilelists()
+        except IndexError:
+            pass 
 
-#  Command to swap the halves of mods moved (untested)
+    elif event == 'ENABLED_button_to_add_dependency':
+        try:
+            filename = values['ENABLED_filelist'][0]
+            mod_filename_cache[filename]['dependencies'].append(values['ENABLED_input_for_new_dependency'])
+            mod_id_cache[mod_filename_cache[filename]['modId']]['dependencies'].append(values['ENABLED_input_for_new_dependency'])
+            win['ENABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
+        except IndexError:
+            pass
+    
+    elif event == 'ENABLED_button_to_remove_dependency':
+        try:
+            filename = values['ENABLED_filelist'][0]
+            mod_filename_cache[filename]['dependencies'].remove(values['ENABLED_dependencies'][0])
+            mod_id_cache[mod_filename_cache[filename]['modId']]['dependencies'].remove(values['ENABLED_dependencies'][0])
+            win['ENABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
+        except IndexError:
+            pass 
 
-#  Command to add all mods back into mod folder
+    # Disabled Side Operations
+    elif event == 'DISABLED_filelist':
+        try:
+            filename = values['DISABLED_filelist'][0]
+            win['DISABLED_filename'].update(filename)
+            win['DISABLED_modId'].update(mod_filename_cache[filename]['modId'])
+            win['DISABLED_keep'].update(mod_filename_cache[filename]['confirmedWorking'])
+            win['DISABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
+        except IndexError:
+            pass
+        except KeyError:
+            pass
+    
+    elif event == 'DISABLED_keep':
+        try:
+            filename = values['DISABLED_filelist'][0]
+            mod_filename_cache[filename]['confirmedWorking'] = values['DISABLED_keep']
+            mod_id_cache[mod_filename_cache[filename]['modId']]['confirmedWorking'] = values['DISABLED_keep']
+        except IndexError:
+            pass
+        except KeyError:
+            pass 
+    
+    elif event == 'DISABLED_button_to_enable':
+        try:
+            filename = values['DISABLED_filelist'][0]
+            os.replace(DISABLED_MODS+filename, MOD_PATH+filename)
+            verifyDependancies()
+            updateFilelists()
+        except IndexError:
+            pass 
 
-#  Command to remove all mods from mod folder
+    elif event == 'DISABLED_button_to_add_dependency':
+        try:
+            filename = values['DISABLED_filelist'][0]
+            mod_filename_cache[filename]['dependencies'].append(values['DISABLED_input_for_new_dependency'])
+            mod_id_cache[mod_filename_cache[filename]['modId']]['dependencies'].append(values['DISABLED_input_for_new_dependency'])
+            win['DISABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
+        except IndexError:
+            pass
+    
+    elif event == 'DISABLED_button_to_remove_dependency':
+        try:
+            filename = values['DISABLED_filelist'][0]
+            mod_filename_cache[filename]['dependencies'].remove(values['DISABLED_dependencies'][0])
+            mod_id_cache[mod_filename_cache[filename]['modId']]['dependencies'].remove(values['DISABLED_dependencies'][0])
+            win['DISABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
+        except IndexError:
+            pass 
 
-#  Command to mark all mods in mod folder as confirmed working
-
-#  Keep track of mods that are confirmed working
-#    - command to reset list of mods that are confirmed working
-
-# TODO 
-#  Save as csv file, for easy loading later
-#    - command to save a file, and to load a file
-
-#  Command to arbritrarily add half of the mods back to the mod folder
-#    Keep track of dependancies, make sure they're met
-
-# Command to print path
-# and to change path
-
-
-# Might not implement
-#  Command to arbritrarily remove half of the mods from the mod folder
-#    Keep track of dependancies, make sure they're met
