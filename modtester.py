@@ -35,17 +35,13 @@ if MOD_PATH[-1] != '/' or MOD_PATH[-1] != '\\':
 #       'modId': 'coolmod',
 #       'dependencies': {'forge', 'minecraft'},
 #       'filename': 'filename.jar',
-#       'confirmedWorking': False
+#       'keepFlag': False
 #     }
 # }
 
-mod_filename_cache = {
+mod_filename_cache = {}
 
-}
-
-mod_id_cache = {
-
-}
+mod_id_cache = {}
 
 def cacheForgeMod(path,modFilename):
     try:
@@ -59,8 +55,8 @@ def cacheForgeMod(path,modFilename):
     temp = toml.load(EXTRACTED_TOML_DIR+modFilename+'/META-INF/mods.toml')
     tempId = temp['mods'][0]['modId']
     # Get the modId from the mods.toml we extracted
-    mod_filename_cache[modFilename] = {'modId': tempId, 'dependencies': [], 'filename': modFilename, 'confirmedWorking': False}
-    mod_id_cache[tempId] = {'modId': tempId, 'dependencies': [], 'filename': modFilename, 'confirmedWorking': False}
+    mod_filename_cache[modFilename] = {'modId': tempId, 'dependencies': [], 'filename': modFilename, 'keepFlag': False}
+    mod_id_cache[tempId] = mod_filename_cache[modFilename]
     # Set up the filename and id cache.
     try:
         for mod in temp['dependencies'][mod_filename_cache[modFilename]['modId']]:
@@ -68,7 +64,6 @@ def cacheForgeMod(path,modFilename):
             if (mod['modId'] not in ('minecraft', 'forge') and mod['mandatory']):
                 # If the requirement is not minecraft or forge, and it's a mandatory dependency then add it to the caches
                 mod_filename_cache[modFilename]['dependencies'].append(mod['modId'])
-                mod_id_cache[tempId]['dependencies'].append(mod['modId'])
     except KeyError:
         pass 
 
@@ -102,8 +97,7 @@ def verifyDependancies():
 
 def markAllAsSafe():
     for x in os.listdir(MOD_PATH):
-        mod_filename_cache[x]['confirmedWorking'] = True
-        mod_id_cache[mod_filename_cache[x]['modId']]['confirmedWorking'] = True 
+        mod_filename_cache[x]['keepFlag'] = True
 
 def swap():
     global mods_last_swapped
@@ -123,7 +117,7 @@ def removeAllMods():
     global mods_last_swapped
     mods_last_swapped = []
     for x in os.listdir(MOD_PATH):
-        if (not mod_filename_cache[x]['confirmedWorking']):
+        if (not mod_filename_cache[x]['keepFlag']):
             os.replace(MOD_PATH+x, DISABLED_MODS_DIR+x)
     verifyDependancies()
 
@@ -193,7 +187,7 @@ columns[3] = [[sg.Text('Filename:')],[sg.Text('',size=(DEFAULT_WIDTH,1),key='ENA
                 [sg.Input(size=(DEFAULT_WIDTH,1),key='ENABLED_input_for_new_dependency')],
                 [sg.Button(button_text='Add New', key='ENABLED_button_to_add_dependency'), sg.Button(button_text='Remove', key='ENABLED_button_to_remove_dependency')]]
 
-menu_bar = [['Important!', ['Refresh Cache', 'Reset Keep Flags']],
+menu_bar = [['Important!', ['Refresh Cache', 'Reset Keep Flags', 'DEBUG']],
             ['File', ['Save...', 'Load...']],
             ['Move All Unflagged', ['Enable All','Disable All']],
             ['Operations', ['Add New Half', 'Swap Halves', 'Mark Active Keep']],
@@ -219,9 +213,7 @@ while True:
     
     elif event == 'Reset Keep Flags':
         for x in mod_filename_cache:
-            mod_filename_cache[x]['confirmedWorking'] = False
-        for x in mod_id_cache:
-            mod_id_cache[x]['confirmedWorking'] = False
+            mod_filename_cache[x]['keepFlag'] = False
 
     elif event == 'Save...':
         filename = sg.PopupGetFile('Choose a file to save your state.', save_as=True)
@@ -231,7 +223,7 @@ while True:
                 temp = []
                 for x in mod_id_cache:
                     temp.append(x)
-                    temp.append(mod_id_cache[x]['confirmedWorking'])
+                    temp.append(mod_id_cache[x]['keepFlag'])
                 w.writerow(temp)
                 temp = []
                 for x in mods_last_swapped:
@@ -248,8 +240,7 @@ while True:
                     for row in r:
                         temp.append(row)
                     for x in range(0, len(temp[0]), 2):
-                        mod_id_cache[temp[0][x]]['confirmedWorking'] = (temp[0][x+1] == 'True')
-                        mod_filename_cache[mod_id_cache[temp[0][x]]['filename']]['confirmedWorking'] = (temp[0][x+1] == 'True')
+                        mod_id_cache[temp[0][x]]['keepFlag'] = (temp[0][x+1] == 'True')
                     mods_last_swapped = []
                     for x in temp[1]:
                         mods_last_swapped.append(x)
@@ -296,7 +287,7 @@ while True:
             filename = values['ENABLED_filelist'][0]
             win['ENABLED_filename'].update(filename)
             win['ENABLED_modId'].update(mod_filename_cache[filename]['modId'])
-            win['ENABLED_keep'].update(mod_filename_cache[filename]['confirmedWorking'])
+            win['ENABLED_keep'].update(mod_filename_cache[filename]['keepFlag'])
             win['ENABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
         except IndexError:
             pass
@@ -306,8 +297,7 @@ while True:
     elif event == 'ENABLED_keep':
         try:
             filename = values['ENABLED_filelist'][0]
-            mod_filename_cache[filename]['confirmedWorking'] = values['ENABLED_keep']
-            mod_id_cache[mod_filename_cache[filename]['modId']]['confirmedWorking'] = values['ENABLED_keep']
+            mod_filename_cache[filename]['keepFlag'] = values['ENABLED_keep']
         except IndexError:
             pass
         except KeyError:
@@ -326,7 +316,6 @@ while True:
         try:
             filename = values['ENABLED_filelist'][0]
             mod_filename_cache[filename]['dependencies'].append(values['ENABLED_input_for_new_dependency'])
-            mod_id_cache[mod_filename_cache[filename]['modId']]['dependencies'].append(values['ENABLED_input_for_new_dependency'])
             win['ENABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
         except IndexError:
             pass
@@ -335,7 +324,6 @@ while True:
         try:
             filename = values['ENABLED_filelist'][0]
             mod_filename_cache[filename]['dependencies'].remove(values['ENABLED_dependencies'][0])
-            mod_id_cache[mod_filename_cache[filename]['modId']]['dependencies'].remove(values['ENABLED_dependencies'][0])
             win['ENABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
         except IndexError:
             pass 
@@ -346,7 +334,7 @@ while True:
             filename = values['DISABLED_filelist'][0]
             win['DISABLED_filename'].update(filename)
             win['DISABLED_modId'].update(mod_filename_cache[filename]['modId'])
-            win['DISABLED_keep'].update(mod_filename_cache[filename]['confirmedWorking'])
+            win['DISABLED_keep'].update(mod_filename_cache[filename]['keepFlag'])
             win['DISABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
         except IndexError:
             pass
@@ -356,8 +344,7 @@ while True:
     elif event == 'DISABLED_keep':
         try:
             filename = values['DISABLED_filelist'][0]
-            mod_filename_cache[filename]['confirmedWorking'] = values['DISABLED_keep']
-            mod_id_cache[mod_filename_cache[filename]['modId']]['confirmedWorking'] = values['DISABLED_keep']
+            mod_filename_cache[filename]['keepFlag'] = values['DISABLED_keep']
         except IndexError:
             pass
         except KeyError:
@@ -376,7 +363,6 @@ while True:
         try:
             filename = values['DISABLED_filelist'][0]
             mod_filename_cache[filename]['dependencies'].append(values['DISABLED_input_for_new_dependency'])
-            mod_id_cache[mod_filename_cache[filename]['modId']]['dependencies'].append(values['DISABLED_input_for_new_dependency'])
             win['DISABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
         except IndexError:
             pass
@@ -385,8 +371,15 @@ while True:
         try:
             filename = values['DISABLED_filelist'][0]
             mod_filename_cache[filename]['dependencies'].remove(values['DISABLED_dependencies'][0])
-            mod_id_cache[mod_filename_cache[filename]['modId']]['dependencies'].remove(values['DISABLED_dependencies'][0])
             win['DISABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
         except IndexError:
             pass 
+    
+    elif event == "DEBUG":
+        print("filename cache")
+        for x in mod_filename_cache:
+            print(x, mod_filename_cache[x])
+        print("id cache")
+        for x in mod_id_cache:
+            print(x, mod_id_cache[x])
 
