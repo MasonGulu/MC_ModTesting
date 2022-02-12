@@ -165,7 +165,7 @@ def updateFilelists():
 DEFAULT_WIDTH = 30
 
 columns = [[],[],[],[]]
-columns[0] = [[sg.Text('Disabled Mods')],[sg.Listbox(values=[],select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,size=(DEFAULT_WIDTH,20),key='DISABLED_filelist',enable_events=True)]]
+columns[0] = [[sg.Text('Disabled Mods')],[sg.Listbox(values=[],select_mode=sg.LISTBOX_SELECT_MODE_EXTENDED,size=(DEFAULT_WIDTH,20),key='DISABLED_filelist',enable_events=True)]]
 
 columns[1] = [[sg.Text('Filename:')],[sg.Text('',size=(DEFAULT_WIDTH,1),key='DISABLED_filename')],
                 [sg.Text('ModId:')], [sg.Text('',size=(DEFAULT_WIDTH,1),key='DISABLED_modId')],
@@ -176,7 +176,7 @@ columns[1] = [[sg.Text('Filename:')],[sg.Text('',size=(DEFAULT_WIDTH,1),key='DIS
                 [sg.Input(size=(DEFAULT_WIDTH,1),key='DISABLED_input_for_new_dependency')],
                 [sg.Button(button_text='Add New', key='DISABLED_button_to_add_dependency'), sg.Button(button_text='Remove', key='DISABLED_button_to_remove_dependency')]]
 
-columns[2] = [[sg.Text('Enabled Mods')],[sg.Listbox(values=[],select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,size=(DEFAULT_WIDTH,20),key='ENABLED_filelist',enable_events=True)]]
+columns[2] = [[sg.Text('Enabled Mods')],[sg.Listbox(values=[],select_mode=sg.LISTBOX_SELECT_MODE_EXTENDED,size=(DEFAULT_WIDTH,20),key='ENABLED_filelist',enable_events=True)]]
 
 columns[3] = [[sg.Text('Filename:')],[sg.Text('',size=(DEFAULT_WIDTH,1),key='ENABLED_filename')],
                 [sg.Text('ModId:')], [sg.Text('',size=(DEFAULT_WIDTH,1),key='ENABLED_modId')],
@@ -284,7 +284,7 @@ while True:
     # Enabled Side Operations
     elif event == 'ENABLED_filelist':
         try:
-            filename = values['ENABLED_filelist'][0]
+            filename = values['ENABLED_filelist'][-1]
             win['ENABLED_filename'].update(filename)
             win['ENABLED_modId'].update(mod_filename_cache[filename]['modId'])
             win['ENABLED_keep'].update(mod_filename_cache[filename]['keepFlag'])
@@ -295,26 +295,26 @@ while True:
             pass
     
     elif event == 'ENABLED_keep':
-        try:
-            filename = values['ENABLED_filelist'][0]
-            mod_filename_cache[filename]['keepFlag'] = values['ENABLED_keep']
-        except IndexError:
-            pass
-        except KeyError:
-            pass 
+        for filename in values['ENABLED_filelist']:
+            try:
+                mod_filename_cache[filename]['keepFlag'] = values['ENABLED_keep']
+            except IndexError:
+                pass
+            except KeyError:
+                pass 
     
     elif event == 'ENABLED_button_to_disable':
-        try:
-            filename = values['ENABLED_filelist'][0]
-            os.replace(MOD_PATH+filename, DISABLED_MODS_DIR+filename)
+            for filename in values['ENABLED_filelist']:
+                try:
+                    os.replace(MOD_PATH+filename, DISABLED_MODS_DIR+filename)
+                except IndexError:
+                    pass 
             verifyDependancies()
             updateFilelists()
-        except IndexError:
-            pass 
 
     elif event == 'ENABLED_button_to_add_dependency':
         try:
-            filename = values['ENABLED_filelist'][0]
+            filename = values['ENABLED_filelist'][-1]
             mod_filename_cache[filename]['dependencies'].append(values['ENABLED_input_for_new_dependency'])
             win['ENABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
         except IndexError:
@@ -322,7 +322,7 @@ while True:
     
     elif event == 'ENABLED_button_to_remove_dependency':
         try:
-            filename = values['ENABLED_filelist'][0]
+            filename = values['ENABLED_filelist'][-1]
             mod_filename_cache[filename]['dependencies'].remove(values['ENABLED_dependencies'][0])
             win['ENABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
         except IndexError:
@@ -331,7 +331,7 @@ while True:
     # Disabled Side Operations
     elif event == 'DISABLED_filelist':
         try:
-            filename = values['DISABLED_filelist'][0]
+            filename = values['DISABLED_filelist'][-1]
             win['DISABLED_filename'].update(filename)
             win['DISABLED_modId'].update(mod_filename_cache[filename]['modId'])
             win['DISABLED_keep'].update(mod_filename_cache[filename]['keepFlag'])
@@ -342,26 +342,26 @@ while True:
             pass
     
     elif event == 'DISABLED_keep':
-        try:
-            filename = values['DISABLED_filelist'][0]
-            mod_filename_cache[filename]['keepFlag'] = values['DISABLED_keep']
-        except IndexError:
-            pass
-        except KeyError:
-            pass 
+        for filename in values['DISABLED_filelist']:
+            try:
+                mod_filename_cache[filename]['keepFlag'] = values['ENABLED_keep']
+            except IndexError:
+                pass
+            except KeyError:
+                pass 
     
     elif event == 'DISABLED_button_to_enable':
-        try:
-            filename = values['DISABLED_filelist'][0]
-            os.replace(DISABLED_MODS_DIR+filename, MOD_PATH+filename)
+            for filename in values['ENABLED_filelist']:
+                try:
+                    os.replace(DISABLED_MODS_DIR+filename, MOD_PATH+filename)
+                except IndexError:
+                    pass 
             verifyDependancies()
             updateFilelists()
-        except IndexError:
-            pass 
 
     elif event == 'DISABLED_button_to_add_dependency':
         try:
-            filename = values['DISABLED_filelist'][0]
+            filename = values['DISABLED_filelist'][-1]
             mod_filename_cache[filename]['dependencies'].append(values['DISABLED_input_for_new_dependency'])
             win['DISABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
         except IndexError:
@@ -369,7 +369,7 @@ while True:
     
     elif event == 'DISABLED_button_to_remove_dependency':
         try:
-            filename = values['DISABLED_filelist'][0]
+            filename = values['DISABLED_filelist'][-1]
             mod_filename_cache[filename]['dependencies'].remove(values['DISABLED_dependencies'][0])
             win['DISABLED_dependencies'].update(values=mod_filename_cache[filename]['dependencies'])
         except IndexError:
