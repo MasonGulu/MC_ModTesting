@@ -7,7 +7,7 @@ import csv
 
 EXTRACTED_TOML_DIR = 'extractedTomls/'
 DISABLED_MODS_DIR = 'inactiveMods/'
-VERSION = '0.20'
+VERSION = '0.21'
 
 sg.theme('SystemDefault')
 
