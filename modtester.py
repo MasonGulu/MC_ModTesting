@@ -1,28 +1,28 @@
 import toml
-from zipfile import ZipFile as zf
+from zipfile import ZipFile
 import os
 import random
 import PySimpleGUI as sg
 import csv
 
-EXTRACTED_TOML_FOLDER = 'extractedTomls/'
-DISABLED_MODS = 'inactiveMods/'
+EXTRACTED_TOML_DIR = 'extractedTomls/'
+DISABLED_MODS_DIR = 'inactiveMods/'
 VERSION = '0.20'
 
 sg.theme('SystemDefault')
 
 try:
-    os.mkdir(EXTRACTED_TOML_FOLDER)
+    os.mkdir(EXTRACTED_TOML_DIR)
 except FileExistsError:
     pass
 
 try:
-    os.mkdir(DISABLED_MODS)
+    os.mkdir(DISABLED_MODS_DIR)
 except FileExistsError:
     pass 
 
 MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='')
-if MOD_PATH == None:
+if MOD_PATH == None or MOD_PATH == '':
     print("Cancelled.")
     quit()
 
@@ -48,10 +48,15 @@ mod_id_cache = {
 }
 
 def cacheForgeMod(path,modFilename):
-    with zf(path+modFilename) as z:
-        z.extract('META-INF/mods.toml', EXTRACTED_TOML_FOLDER+modFilename)
+    try:
+        with ZipFile(path+modFilename) as z:
+            z.extract('META-INF/mods.toml', EXTRACTED_TOML_DIR+modFilename)
+    except Exception as temp:
+        print('!! Erorr: '+modFilename+' is probably not a jar file.')
+        print(temp)
+        return
         # Extract META-INF/mods.toml from the .jar file
-    temp = toml.load(EXTRACTED_TOML_FOLDER+modFilename+'/META-INF/mods.toml')
+    temp = toml.load(EXTRACTED_TOML_DIR+modFilename+'/META-INF/mods.toml')
     tempId = temp['mods'][0]['modId']
     # Get the modId from the mods.toml we extracted
     mod_filename_cache[modFilename] = {'modId': tempId, 'dependencies': [], 'filename': modFilename, 'confirmedWorking': False}
@@ -59,38 +64,20 @@ def cacheForgeMod(path,modFilename):
     # Set up the filename and id cache.
     try:
         for mod in temp['dependencies'][mod_filename_cache[modFilename]['modId']]:
+            # Iterate every mod in the dependencies list
             if (mod['modId'] not in ('minecraft', 'forge') and mod['mandatory']):
+                # If the requirement is not minecraft or forge, and it's a mandatory dependency then add it to the caches
                 mod_filename_cache[modFilename]['dependencies'].append(mod['modId'])
                 mod_id_cache[tempId]['dependencies'].append(mod['modId'])
     except KeyError:
         pass 
 
-def printSingleSummary(mod_info):
-    print(mod_info['filename'])
-    print('  modId: '+mod_info['modId'])
-    if (mod_info['confirmedWorking']):
-        print('  marked WORKING')
-    if (len(mod_info['dependencies']) > 0):
-        print('  depends on:')
-        for y in mod_info['dependencies']:
-            print('  - '+y)
-        
-def printStatus(temp):
-    try:
-        printSingleSummary(mod_filename_cache[temp])
-    except KeyError:
-        try:
-            printSingleSummary(mod_id_cache[temp])
-        except KeyError:
-            for x in mod_filename_cache:
-                printSingleSummary(mod_filename_cache[x])
-
-mods_added = []
+mods_last_swapped = []
 
 def addModByID(id):
-    for x in os.listdir(DISABLED_MODS):
+    for x in os.listdir(DISABLED_MODS_DIR):
         if (mod_filename_cache[x]['modId'] == id):
-            os.replace(DISABLED_MODS+x, MOD_PATH+x)
+            os.replace(DISABLED_MODS_DIR+x, MOD_PATH+x)
             return True 
     return False
 
@@ -119,46 +106,46 @@ def markAllAsSafe():
         mod_id_cache[mod_filename_cache[x]['modId']]['confirmedWorking'] = True 
 
 def swap():
-    global mods_added
-    if len(mods_added) == 0:
+    global mods_last_swapped
+    if len(mods_last_swapped) == 0:
         print("There are no mods to swap.")
         return
     temp = []
-    for x in os.listdir(DISABLED_MODS):
-        os.replace(DISABLED_MODS+x, MOD_PATH+x)
+    for x in os.listdir(DISABLED_MODS_DIR):
+        os.replace(DISABLED_MODS_DIR+x, MOD_PATH+x)
         temp.append(x)
-    for x in mods_added:
-        os.replace(MOD_PATH+x, DISABLED_MODS+x)
-    mods_added = temp
+    for x in mods_last_swapped:
+        os.replace(MOD_PATH+x, DISABLED_MODS_DIR+x)
+    mods_last_swapped = temp
     verifyDependancies()
 
 def removeAllMods():
-    global mods_added
-    mods_added = []
+    global mods_last_swapped
+    mods_last_swapped = []
     for x in os.listdir(MOD_PATH):
         if (not mod_filename_cache[x]['confirmedWorking']):
-            os.replace(MOD_PATH+x, DISABLED_MODS+x)
+            os.replace(MOD_PATH+x, DISABLED_MODS_DIR+x)
     verifyDependancies()
 
 def addAllMods():
-    global mods_added
-    mods_added = []
-    for x in os.listdir(DISABLED_MODS):
-        os.replace(DISABLED_MODS+x, MOD_PATH+x)
-        mods_added.append(x)
+    global mods_last_swapped
+    mods_last_swapped = []
+    for x in os.listdir(DISABLED_MODS_DIR):
+        os.replace(DISABLED_MODS_DIR+x, MOD_PATH+x)
+        mods_last_swapped.append(x)
     verifyDependancies()
 
 def addHalf():
-    global mods_added 
-    dir = os.listdir(DISABLED_MODS)
-    mods_added = random.sample(dir, round(len(dir)/2))
-    for x in mods_added:
-        os.replace(DISABLED_MODS+x, MOD_PATH+x)
+    global mods_last_swapped 
+    dir = os.listdir(DISABLED_MODS_DIR)
+    mods_last_swapped = random.sample(dir, round(len(dir)/2))
+    for x in mods_last_swapped:
+        os.replace(DISABLED_MODS_DIR+x, MOD_PATH+x)
     verifyDependancies()
 
 def cacheAll():
     mods = os.listdir(MOD_PATH)
-    dmods = os.listdir(DISABLED_MODS)
+    dmods = os.listdir(DISABLED_MODS_DIR)
     layout = [[sg.Text('',key='modname', size=(20,1))],
                 [sg.ProgressBar(len(mods)+len(dmods), orientation='h', size=(20,20),key='bar')]]
     win = sg.Window('Caching Mods...', layout=layout, finalize=True)
@@ -172,12 +159,12 @@ def cacheAll():
         i += 1
         win['modname'].update(x)
         win['bar'].UpdateBar(i)
-        cacheForgeMod(DISABLED_MODS,x)
+        cacheForgeMod(DISABLED_MODS_DIR,x)
     win.close()
 
 
 def updateFilelists():
-    win['DISABLED_filelist'].update(values=os.listdir(DISABLED_MODS))
+    win['DISABLED_filelist'].update(values=os.listdir(DISABLED_MODS_DIR))
     win['ENABLED_filelist'].update(values=os.listdir(MOD_PATH))
     win.finalize()
 
@@ -208,7 +195,7 @@ columns[3] = [[sg.Text('Filename:')],[sg.Text('',size=(DEFAULT_WIDTH,1),key='ENA
 
 menu_bar = [['Important!', ['Refresh Cache', 'Reset Keep Flags']],
             ['File', ['Save...', 'Load...']],
-            ['Move All Unknown', ['To Enabled','To Disabled']],
+            ['Move All Unflagged', ['Enable All','Disable All']],
             ['Operations', ['Add New Half', 'Swap Halves', 'Mark Active Keep']],
             ['Help', ['How To Use', 'About']]]
 layout = [[sg.MenuBar(menu_bar)], [sg.Column(columns[0]),sg.Column(columns[1]),sg.VerticalSeparator(),sg.Column(columns[2]),sg.Column(columns[3])]]
@@ -247,7 +234,7 @@ while True:
                     temp.append(mod_id_cache[x]['confirmedWorking'])
                 w.writerow(temp)
                 temp = []
-                for x in mods_added:
+                for x in mods_last_swapped:
                     temp.append(x)
                 w.writerow(temp)
 
@@ -263,17 +250,17 @@ while True:
                     for x in range(0, len(temp[0]), 2):
                         mod_id_cache[temp[0][x]]['confirmedWorking'] = (temp[0][x+1] == 'True')
                         mod_filename_cache[mod_id_cache[temp[0][x]]['filename']]['confirmedWorking'] = (temp[0][x+1] == 'True')
-                    mods_added = []
+                    mods_last_swapped = []
                     for x in temp[1]:
-                        mods_added.append(x)
+                        mods_last_swapped.append(x)
             except:
                 print("!! An issue occured loading!")
 
-    elif event == 'To Enabled':
+    elif event == 'Enable All':
         addAllMods()
         updateFilelists()
     
-    elif event == 'To Disabled':
+    elif event == 'Disable All':
         removeAllMods()
         updateFilelists()
     
@@ -329,7 +316,7 @@ while True:
     elif event == 'ENABLED_button_to_disable':
         try:
             filename = values['ENABLED_filelist'][0]
-            os.replace(MOD_PATH+filename, DISABLED_MODS+filename)
+            os.replace(MOD_PATH+filename, DISABLED_MODS_DIR+filename)
             verifyDependancies()
             updateFilelists()
         except IndexError:
@@ -379,7 +366,7 @@ while True:
     elif event == 'DISABLED_button_to_enable':
         try:
             filename = values['DISABLED_filelist'][0]
-            os.replace(DISABLED_MODS+filename, MOD_PATH+filename)
+            os.replace(DISABLED_MODS_DIR+filename, MOD_PATH+filename)
             verifyDependancies()
             updateFilelists()
         except IndexError:
