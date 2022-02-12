@@ -21,7 +21,13 @@ try:
 except FileExistsError:
     pass 
 
-MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='') + '/'
+MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='')
+if MOD_PATH == None:
+    print("Cancelled.")
+    quit()
+
+if MOD_PATH[-1] != '/' or MOD_PATH[-1] != '\\':
+    MOD_PATH += '/'
 
 # Example mod_filename_cache
 # mod_filename_cache = {
@@ -41,13 +47,16 @@ mod_id_cache = {
 
 }
 
-def cacheMod(path,modFilename):
+def cacheForgeMod(path,modFilename):
     with zf(path+modFilename) as z:
         z.extract('META-INF/mods.toml', EXTRACTED_TOML_FOLDER+modFilename)
+        # Extract META-INF/mods.toml from the .jar file
     temp = toml.load(EXTRACTED_TOML_FOLDER+modFilename+'/META-INF/mods.toml')
     tempId = temp['mods'][0]['modId']
+    # Get the modId from the mods.toml we extracted
     mod_filename_cache[modFilename] = {'modId': tempId, 'dependencies': [], 'filename': modFilename, 'confirmedWorking': False}
     mod_id_cache[tempId] = {'modId': tempId, 'dependencies': [], 'filename': modFilename, 'confirmedWorking': False}
+    # Set up the filename and id cache.
     try:
         for mod in temp['dependencies'][mod_filename_cache[modFilename]['modId']]:
             if (mod['modId'] not in ('minecraft', 'forge') and mod['mandatory']):
@@ -158,12 +167,12 @@ def cacheAll():
         i += 1
         win['modname'].update(x)
         win['bar'].UpdateBar(i)
-        cacheMod(MOD_PATH,x)
+        cacheForgeMod(MOD_PATH,x)
     for x in dmods:
         i += 1
         win['modname'].update(x)
         win['bar'].UpdateBar(i)
-        cacheMod(DISABLED_MODS,x)
+        cacheForgeMod(DISABLED_MODS,x)
     win.close()
 
 
