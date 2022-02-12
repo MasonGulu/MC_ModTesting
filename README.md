@@ -1,6 +1,10 @@
 # About
 This is a python script (with GUI) that allows for quick and effective modpack debugging. It uses binary searching to find a single mod causing issues in a modpack of huge size shockingly quickly.
 
+# Requirements
+Python 3, I used 3.9.7 and tested on 3.10, but any version of 3 should work.
+* toml
+* PySimpleGUI
 
 # How to use
 * First, when you launch the script a window will pop up, asking for your mod directory. Make sure to give the full path to where your mod folder (of the modpack you're testing) is located. Ensure there is not a / at the end of the directory.
@@ -19,6 +23,3 @@ First, I would disable all the mods (Move All Unknown > To Disabled). I'd then m
 
 To get around this crash, I disable all mods, this however leaves behind the mods flagged keep. I'm free to then move another half over (the halves are randomized each time). The game doesn't crash this time, and I repeat the process over and over again until I'm down to my last few mods, then I can make educated guesses on which one is causing a problem. Test, and repeat.
 
-# Requirements
-* toml
-* PySimpleGUI
