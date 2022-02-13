@@ -1,3 +1,4 @@
+from turtle import update
 import toml
 from zipfile import ZipFile
 import os
@@ -21,7 +22,7 @@ try:
 except FileExistsError:
     pass 
 
-MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='')
+MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='/home/mason/.local/share/multimc/instances/TheRealm/.minecraft/mods')
 if MOD_PATH == None or MOD_PATH == '':
     print("Cancelled.")
     quit()
@@ -39,18 +40,29 @@ if MOD_PATH[-1] != '/' or MOD_PATH[-1] != '\\':
 #     }
 # }
 
+settings = {
+    'autoResolveDependencies': True,
+    'autoVerifyDependencies': True,
+    'autoCloseDependenciesWindow': True,
+
+    'autoCloseCacheWindow': True
+}
+
 mod_filename_cache = {}
 
 mod_id_cache = {}
 
 def cacheForgeMod(path,modFilename):
+    # This function takes path (the path to the mod file '.minecraft/mods'), and modFilename (the filename of the mod 'example.jar')
+    # It then tries to extract the mods.toml file from the Jar file, then gets dependency and modId information from the mods.toml file
+    # Then it adds entries to both dictionaries (mod_filename_cache and mod_id_cache)
     try:
         with ZipFile(path+modFilename) as z:
             z.extract('META-INF/mods.toml', EXTRACTED_TOML_DIR+modFilename)
     except Exception as temp:
         print('!! Erorr: '+modFilename+' is probably not a jar file.')
         print(temp)
-        return
+        return False
         # Extract META-INF/mods.toml from the .jar file
     temp = toml.load(EXTRACTED_TOML_DIR+modFilename+'/META-INF/mods.toml')
     tempId = temp['mods'][0]['modId']
@@ -66,6 +78,7 @@ def cacheForgeMod(path,modFilename):
                 mod_filename_cache[modFilename]['dependencies'].append(mod['modId'])
     except KeyError:
         pass 
+    return True
 
 mods_last_swapped = []
 
@@ -76,33 +89,54 @@ def addModByID(id):
             return True 
     return False
 
-def verifyDependancies():
-    print('Verifying dependancies..')
+def verifyDependencies():
+    mods = os.listdir(MOD_PATH)
+    layout = [[sg.Text('',key='modname', size=(30,1))],
+                [sg.ProgressBar(len(mods), orientation='h', size=(30,20),key='bar')],
+                [sg.Multiline(key='warnlist', size=(40,10))]]
+    win = sg.Window('Verifying Dependencies...', layout=layout, finalize=True)
+    keepWindowOpen = False
+    dependenciesMet = True
     activemods = []
-    for x in os.listdir(MOD_PATH):
+    for x in mods:
         try:
             activemods.append(mod_filename_cache[x]['modId'])
         except KeyError:
-            print('WARNING: Cache is out of date!')
+            win['warnlist'].print('[WARN]','Cache is out of date! File',x,'not cached.')
+            keepWindowOpen = True
+    i = 0
     for x in activemods:
+        i += 1
+        win['modname'].update(x)
+        win['bar'].UpdateBar(i)
+
         for y in mod_id_cache[x]['dependencies']:
             if y not in activemods:
-                print(x+' requires '+y+'. Attempting to reenable..')
-                if not addModByID(y):
-                    print('!!! Mod '+y+' not found. Aborting.')
-                    return 
-                else:
-                    activemods.append(y)
-    print('All dependancies found. Game should launch.')
+                if settings['autoResolveDependencies']:
+                    if not addModByID(y):
+                        win['warnlist'].print('[ERROR]',y,'required by',x,'not found.')
+                        keepWindowOpen = True
+                        dependenciesMet = False
+                        return 
+                    else:
+                        win['warnlist'].print('[INFO]',y,'enabled to meet requirements of',x)
+                        keepWindowOpen = True
+                        activemods.append(y)
 
-def markAllAsSafe():
-    for x in os.listdir(MOD_PATH):
-        mod_filename_cache[x]['keepFlag'] = True
+                else:
+                    win['warnlist'].print('[WARN]', y, 'is required for', x,)
+                    dependenciesMet = False
+                    keepWindowOpen = True
+    if dependenciesMet:
+        win['warnlist'].print('[INFO]', 'SUCCESS, dependencies met.')
+    if not keepWindowOpen and settings['autoCloseDependenciesWindow']:
+        win.close()
+    
 
 def swap():
     global mods_last_swapped
     if len(mods_last_swapped) == 0:
-        print("There are no mods to swap.")
+        sg.PopupOK('There are no mods to swap.', title='Swap Mods')
         return
     temp = []
     for x in os.listdir(DISABLED_MODS_DIR):
@@ -111,50 +145,73 @@ def swap():
     for x in mods_last_swapped:
         os.replace(MOD_PATH+x, DISABLED_MODS_DIR+x)
     mods_last_swapped = temp
-    verifyDependancies()
+    if settings['autoVerifyDependencies']:
+        verifyDependencies()
 
 def removeAllMods():
+    # This function moves all unlocked mods from MOD_PATH to DISABLED_MODS_DIR
     global mods_last_swapped
     mods_last_swapped = []
     for x in os.listdir(MOD_PATH):
         if (not mod_filename_cache[x]['keepFlag']):
             os.replace(MOD_PATH+x, DISABLED_MODS_DIR+x)
-    verifyDependancies()
+    if settings['autoVerifyDependencies']:
+        verifyDependencies()
 
 def addAllMods():
+    # This function moves all unlocked mods from DISABLED_MODS_DIR to MOD_PATH
     global mods_last_swapped
     mods_last_swapped = []
     for x in os.listdir(DISABLED_MODS_DIR):
         os.replace(DISABLED_MODS_DIR+x, MOD_PATH+x)
         mods_last_swapped.append(x)
-    verifyDependancies()
+    if settings['autoVerifyDependencies']:
+        verifyDependencies()
 
 def addHalf():
+    # This funciton moves a random half of the mods from the DISABLED_MODS_DIR to MOD_PATH
     global mods_last_swapped 
     dir = os.listdir(DISABLED_MODS_DIR)
     mods_last_swapped = random.sample(dir, round(len(dir)/2))
     for x in mods_last_swapped:
         os.replace(DISABLED_MODS_DIR+x, MOD_PATH+x)
-    verifyDependancies()
+    if settings['autoVerifyDependencies']:
+        verifyDependencies()
 
-def cacheAll():
+def cacheAllForge():
+    global mod_filename_cache
+    global mod_id_cache
+    mod_filename_cache = {}
+    mod_id_cache = {}
     mods = os.listdir(MOD_PATH)
     dmods = os.listdir(DISABLED_MODS_DIR)
-    layout = [[sg.Text('',key='modname', size=(20,1))],
-                [sg.ProgressBar(len(mods)+len(dmods), orientation='h', size=(20,20),key='bar')]]
+    layout = [[sg.Text('',key='modname', size=(30,1))],
+                [sg.ProgressBar(len(mods)+len(dmods), orientation='h', size=(30,20),key='bar')],
+                [sg.Multiline(key='warnlist',size=(40,10))]]
+    keepWindowOpen = False
+    modsCachedSuccessfully = True
     win = sg.Window('Caching Mods...', layout=layout, finalize=True)
     i = 0
     for x in mods:
         i += 1
         win['modname'].update(x)
         win['bar'].UpdateBar(i)
-        cacheForgeMod(MOD_PATH,x)
+        if not cacheForgeMod(MOD_PATH,x):
+            win['warnlist'].print('[ERROR]', x, 'is not a Forge Mod')
+            keepWindowOpen = True
+            modsCachedSuccessfully = False
     for x in dmods:
         i += 1
         win['modname'].update(x)
         win['bar'].UpdateBar(i)
-        cacheForgeMod(DISABLED_MODS_DIR,x)
-    win.close()
+        if not cacheForgeMod(DISABLED_MODS_DIR,x):
+            win['warnlist'].print('[ERROR]', x, 'is not a Forge Mod')
+            keepWindowOpen = True
+            modsCachedSuccessfully = False 
+    if modsCachedSuccessfully:
+        win['warnlist'].print('[INFO]','Success, all mods cached.')
+    if not keepWindowOpen and settings['autoCloseCacheWindow']:
+        win.close()
 
 
 def updateFilelists():
@@ -187,19 +244,31 @@ columns[3] = [[sg.Text('Filename:')],[sg.Text('',size=(DEFAULT_WIDTH,1),key='ENA
                 [sg.Input(size=(DEFAULT_WIDTH,1),key='ENABLED_input_for_new_dependency')],
                 [sg.Button(button_text='Add New', key='ENABLED_button_to_add_dependency'), sg.Button(button_text='Remove', key='ENABLED_button_to_remove_dependency')]]
 
-menu_bar = [['Important!', ['Refresh Cache', 'Reset Keep Flags', 'DEBUG']],
+menu_bar = [['Important!', ['Refresh Cache', 'Reset Keep Flags', 'Verify Dependencies']],
             ['File', ['Save...', 'Load...']],
             ['Move All Unflagged', ['Enable All','Disable All']],
             ['Operations', ['Add New Half', 'Swap Halves', 'Mark Active Keep']],
             ['Help', ['How To Use', 'About']]]
-layout = [[sg.MenuBar(menu_bar)], [sg.Column(columns[0]),sg.Column(columns[1]),sg.VerticalSeparator(),sg.Column(columns[2]),sg.Column(columns[3])]]
+
+TAB_BUTTON_SIZE = (15,1)
+tab_start = [[sg.Combo(['Forge', 'Fabric'], key='modloader', readonly=True, default_value='Forge',size=TAB_BUTTON_SIZE)],
+            [sg.Button('Refresh Cache', key='Refresh Cache', size=TAB_BUTTON_SIZE), sg.Button('Reset Keep Flags', key='Reset Keep Flags', size=TAB_BUTTON_SIZE)],
+            [sg.Button('Save...', key='Save...', size=TAB_BUTTON_SIZE),sg.Button('Load...', key='Load...',size=TAB_BUTTON_SIZE)]]
+tab_operations = [[sg.Button('Enable All', key='Enable All', size=TAB_BUTTON_SIZE), sg.Button('Disable All', key='Disable All', size=TAB_BUTTON_SIZE)],
+                [sg.Button('Add New Half', key='Add New Half', size=TAB_BUTTON_SIZE), sg.Button('Swap Halves', key='Swap Halves', size=TAB_BUTTON_SIZE)],
+                [sg.Button('Verify Dependencies', key='Verify Dependencies', size=TAB_BUTTON_SIZE), sg.Button('Mark Active Keep', key='Mark Active Keep', size=TAB_BUTTON_SIZE)]]
+tab_settings = [[sg.Button('Save Settings', key='save_settings', size=TAB_BUTTON_SIZE), sg.Button('Load Settings', key='load_settings', size=TAB_BUTTON_SIZE)],
+                [sg.Checkbox('Auto Resolve Dependencies',key='autoResolveDependencies', default=settings['autoResolveDependencies'])],
+                [sg.Checkbox('Auto Verify Dependencies', key='autoVerifyDependencies', default=settings['autoVerifyDependencies'])]]
+
+layout = [[sg.TabGroup([[sg.Tab('Start', tab_start), sg.Tab('Operations', tab_operations), sg.Tab('Settings', tab_settings)]])], [sg.Column(columns[0]),sg.Column(columns[1]),sg.VerticalSeparator(),sg.Column(columns[2]),sg.Column(columns[3])]]
 
 
 win = sg.Window('MC Mod Tester', layout=layout)
 
 win.finalize()
 updateFilelists()
-cacheAll()
+cacheAllForge()
 
 while True:
     event, values = win.read()
@@ -208,15 +277,24 @@ while True:
     # Every event should refresh the file listings
 
     if event == 'Refresh Cache':
-        cacheAll()
-        updateFilelists()
+        selection = sg.PopupYesNo('Refreshing the cache will wipe all flags you\'ve set.\nAre you sure?',title='Refresh Cache') 
+        if selection == 'Yes':
+            if values['modloader'] == 'Forge':
+                cacheAllForge()
+            updateFilelists()
     
     elif event == 'Reset Keep Flags':
-        for x in mod_filename_cache:
-            mod_filename_cache[x]['keepFlag'] = False
+        selection = sg.PopupYesNo('This will set all keep flags to false.\nAre you sure?', title='Reset Flags')
+        if selection == 'Yes':
+            for x in mod_filename_cache:
+                mod_filename_cache[x]['keepFlag'] = False
+
+    elif event == 'Verify Dependencies':
+        verifyDependencies()
+        updateFilelists()
 
     elif event == 'Save...':
-        filename = sg.PopupGetFile('Choose a file to save your state.', save_as=True)
+        filename = sg.PopupGetFile('Choose a file to save your state.', save_as=True, default_extension='.csv', file_types=[("CSV Files",(".csv"))])
         if filename != None:
             with open(filename, 'w') as csvfile:
                 w = csv.writer(csvfile)
@@ -231,7 +309,7 @@ while True:
                 w.writerow(temp)
 
     elif event == 'Load...':
-        filename = sg.PopupGetFile('Choose a file to load a state.')
+        filename = sg.PopupGetFile('Choose a file to load a state.',default_extension='.csv', file_types=[("CSV Files",(".csv"))])
         if filename != None:
             try:
                 with open(filename, 'r') as csvfile:
@@ -264,7 +342,8 @@ while True:
         updateFilelists()
 
     elif event == 'Mark Active Keep':
-        markAllAsSafe()
+        for x in os.listdir(MOD_PATH):
+            mod_filename_cache[x]['keepFlag'] = True
 
     elif event == 'How To Use':
         sg.PopupNoButtons("""
@@ -309,7 +388,8 @@ while True:
                     os.replace(MOD_PATH+filename, DISABLED_MODS_DIR+filename)
                 except IndexError:
                     pass 
-            verifyDependancies()
+            if settings['autoVerifyDependencies']:
+                verifyDependencies()
             updateFilelists()
 
     elif event == 'ENABLED_button_to_add_dependency':
@@ -351,12 +431,13 @@ while True:
                 pass 
     
     elif event == 'DISABLED_button_to_enable':
-            for filename in values['ENABLED_filelist']:
+            for filename in values['DISABLED_filelist']:
                 try:
                     os.replace(DISABLED_MODS_DIR+filename, MOD_PATH+filename)
                 except IndexError:
                     pass 
-            verifyDependancies()
+            if settings['autoVerifyDependencies']:
+                verifyDependencies()
             updateFilelists()
 
     elif event == 'DISABLED_button_to_add_dependency':
@@ -375,11 +456,4 @@ while True:
         except IndexError:
             pass 
     
-    elif event == "DEBUG":
-        print("filename cache")
-        for x in mod_filename_cache:
-            print(x, mod_filename_cache[x])
-        print("id cache")
-        for x in mod_id_cache:
-            print(x, mod_id_cache[x])
 
