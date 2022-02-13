@@ -5,6 +5,7 @@ import os
 import random
 import PySimpleGUI as sg
 import csv
+import json
 
 EXTRACTED_TOML_DIR = 'extractedTomls/'
 DISABLED_MODS_DIR = 'inactiveMods/'
@@ -22,7 +23,7 @@ try:
 except FileExistsError:
     pass 
 
-MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='/home/mason/.local/share/multimc/instances/TheRealm/.minecraft/mods')
+MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='/home/mason//Downloads/Better+Minecraft+Server+Pack+[FABRIC]+v15/Better Minecraft Server Pack [FABRIC] 1.18.1/mods')
 if MOD_PATH == None or MOD_PATH == '':
     print("Cancelled.")
     quit()
@@ -60,7 +61,7 @@ def cacheForgeMod(path,modFilename):
         with ZipFile(path+modFilename) as z:
             z.extract('META-INF/mods.toml', EXTRACTED_TOML_DIR+modFilename)
     except Exception as temp:
-        print('!! Erorr: '+modFilename+' is probably not a jar file.')
+        print('!! Erorr: '+modFilename+' is probably not a forge mod.')
         print(temp)
         return False
         # Extract META-INF/mods.toml from the .jar file
@@ -80,13 +81,49 @@ def cacheForgeMod(path,modFilename):
         pass 
     return True
 
+def cacheFabricMod(path,modFilename):
+    # This function takes path (the path to the mod file '.minecraft/mods'), and modFilename (the filename of the mod 'example.jar')
+    # It then tries to extract the mods.toml file from the Jar file, then gets dependency and modId information from the mods.toml file
+    # Then it adds entries to both dictionaries (mod_filename_cache and mod_id_cache)
+    try:
+        with ZipFile(path+modFilename) as z:
+            z.extract('fabric.mod.json', EXTRACTED_TOML_DIR+modFilename)
+    except Exception as temp:
+        print('!! Erorr: '+modFilename+' is probably not a fabric mod.')
+        print(temp)
+        return False, ''
+        # Extract META-INF/mods.toml from the .jar file
+    try:
+        temp = json.load(open(EXTRACTED_TOML_DIR+modFilename+'/fabric.mod.json'))
+    except json.JSONDecodeError as err:
+        print('!! Error: '+modFilename+' JSON file is formatted incorrectly.. ', err)
+        mod_filename_cache[modFilename] = {'dependencies':[], 'keepFlag':False, 'filename':modFilename}
+        return False, err
+    tempId = temp['id']
+    # Get the modId from the mods.toml we extracted
+    mod_filename_cache[modFilename] = {'modId': tempId, 'dependencies': [], 'filename': modFilename, 'keepFlag': False}
+    mod_id_cache[tempId] = mod_filename_cache[modFilename]
+    # Set up the filename and id cache.
+    try:
+        for mod in temp['depends']:
+            # Iterate every mod in the dependencies list
+            if (mod not in ('fabric', 'fabricloader','minecraft', 'java', 'fabric-resource-loader-v0' )):
+                # If the requirement is not minecraft or fabric, and it's a mandatory dependency then add it to the caches
+                mod_filename_cache[modFilename]['dependencies'].append(mod)
+    except KeyError:
+        pass 
+    return True, ''
+
 mods_last_swapped = []
 
 def addModByID(id):
     for x in os.listdir(DISABLED_MODS_DIR):
-        if (mod_filename_cache[x]['modId'] == id):
-            os.replace(DISABLED_MODS_DIR+x, MOD_PATH+x)
-            return True 
+        try:
+            if (mod_filename_cache[x]['modId'] == id):
+                os.replace(DISABLED_MODS_DIR+x, MOD_PATH+x)
+                return True 
+        except KeyError:
+            pass 
     return False
 
 def verifyDependencies():
@@ -120,7 +157,6 @@ def verifyDependencies():
                         return 
                     else:
                         win['warnlist'].print('[INFO]',y,'enabled to meet requirements of',x)
-                        keepWindowOpen = True
                         activemods.append(y)
 
                 else:
@@ -153,8 +189,11 @@ def removeAllMods():
     global mods_last_swapped
     mods_last_swapped = []
     for x in os.listdir(MOD_PATH):
-        if (not mod_filename_cache[x]['keepFlag']):
-            os.replace(MOD_PATH+x, DISABLED_MODS_DIR+x)
+        try:
+            if (not mod_filename_cache[x]['keepFlag']):
+                os.replace(MOD_PATH+x, DISABLED_MODS_DIR+x)
+        except KeyError:
+            sg.PopupNoButtons([x, 'is not cached.'], title='Cache out of date!')
     if settings['autoVerifyDependencies']:
         verifyDependencies()
 
@@ -213,10 +252,56 @@ def cacheAllForge():
     if not keepWindowOpen and settings['autoCloseCacheWindow']:
         win.close()
 
+def cacheAllFabric():
+    global mod_filename_cache
+    global mod_id_cache
+    mod_filename_cache = {}
+    mod_id_cache = {}
+    mods = os.listdir(MOD_PATH)
+    dmods = os.listdir(DISABLED_MODS_DIR)
+    layout = [[sg.Text('',key='modname', size=(30,1))],
+                [sg.ProgressBar(len(mods)+len(dmods), orientation='h', size=(30,20),key='bar')],
+                [sg.Multiline(key='warnlist',size=(40,10))]]
+    keepWindowOpen = False
+    modsCachedSuccessfully = True
+    win = sg.Window('Caching Mods...', layout=layout, finalize=True)
+    i = 0
+    for x in mods:
+        i += 1
+        win['modname'].update(x)
+        win['bar'].UpdateBar(i)
+        status = cacheFabricMod(MOD_PATH,x)
+        if not status[0]:
+            if status[1] is json.JSONDecodeError:
+                win['warnlist'].print('[ERROR]', x, 'is not a Fabric Mod')
+            else:
+                win['warnlist'].print('[ERROR]', x, 'has an inproperly formatted JSON file.', status[1])
+            keepWindowOpen = True
+            modsCachedSuccessfully = False
+    for x in dmods:
+        i += 1
+        win['modname'].update(x)
+        win['bar'].UpdateBar(i)
+        status = cacheFabricMod(DISABLED_MODS_DIR,x)
+        if not status[0]:
+            if status[1] is json.JSONDecodeError:
+                win['warnlist'].print('[ERROR]', x, 'is not a Fabric Mod')
+            else:
+                win['warnlist'].print('[ERROR]', x, 'has an inproperly formatted JSON file.', status[1])
+            keepWindowOpen = True
+            modsCachedSuccessfully = False 
+    if modsCachedSuccessfully:
+        win['warnlist'].print('[INFO]','Success, all mods cached.')
+    if not keepWindowOpen and settings['autoCloseCacheWindow']:
+        win.close()
 
 def updateFilelists():
-    win['DISABLED_filelist'].update(values=os.listdir(DISABLED_MODS_DIR))
-    win['ENABLED_filelist'].update(values=os.listdir(MOD_PATH))
+    disabled_filelist = os.listdir(DISABLED_MODS_DIR)
+    disabled_filelist.sort()
+    enabled_filelist = os.listdir(MOD_PATH)
+    enabled_filelist.sort()
+    win['DISABLED_filelist'].update(values=disabled_filelist)
+    win['ENABLED_filelist'].update(values=enabled_filelist)
     win.finalize()
 
 DEFAULT_WIDTH = 30
@@ -244,12 +329,6 @@ columns[3] = [[sg.Text('Filename:')],[sg.Text('',size=(DEFAULT_WIDTH,1),key='ENA
                 [sg.Input(size=(DEFAULT_WIDTH,1),key='ENABLED_input_for_new_dependency')],
                 [sg.Button(button_text='Add New', key='ENABLED_button_to_add_dependency'), sg.Button(button_text='Remove', key='ENABLED_button_to_remove_dependency')]]
 
-menu_bar = [['Important!', ['Refresh Cache', 'Reset Keep Flags', 'Verify Dependencies']],
-            ['File', ['Save...', 'Load...']],
-            ['Move All Unflagged', ['Enable All','Disable All']],
-            ['Operations', ['Add New Half', 'Swap Halves', 'Mark Active Keep']],
-            ['Help', ['How To Use', 'About']]]
-
 TAB_BUTTON_SIZE = (15,1)
 tab_start = [[sg.Combo(['Forge', 'Fabric'], key='modloader', readonly=True, default_value='Forge',size=TAB_BUTTON_SIZE)],
             [sg.Button('Refresh Cache', key='Refresh Cache', size=TAB_BUTTON_SIZE), sg.Button('Reset Keep Flags', key='Reset Keep Flags', size=TAB_BUTTON_SIZE)],
@@ -257,11 +336,13 @@ tab_start = [[sg.Combo(['Forge', 'Fabric'], key='modloader', readonly=True, defa
 tab_operations = [[sg.Button('Enable All', key='Enable All', size=TAB_BUTTON_SIZE), sg.Button('Disable All', key='Disable All', size=TAB_BUTTON_SIZE)],
                 [sg.Button('Add New Half', key='Add New Half', size=TAB_BUTTON_SIZE), sg.Button('Swap Halves', key='Swap Halves', size=TAB_BUTTON_SIZE)],
                 [sg.Button('Verify Dependencies', key='Verify Dependencies', size=TAB_BUTTON_SIZE), sg.Button('Mark Active Keep', key='Mark Active Keep', size=TAB_BUTTON_SIZE)]]
-tab_settings = [[sg.Button('Save Settings', key='save_settings', size=TAB_BUTTON_SIZE), sg.Button('Load Settings', key='load_settings', size=TAB_BUTTON_SIZE)],
-                [sg.Checkbox('Auto Resolve Dependencies',key='autoResolveDependencies', default=settings['autoResolveDependencies'])],
-                [sg.Checkbox('Auto Verify Dependencies', key='autoVerifyDependencies', default=settings['autoVerifyDependencies'])]]
+tab_settings = [[sg.Button('Apply Settings', key='apply_settings', size=TAB_BUTTON_SIZE)],
+                [sg.Checkbox('Auto Resolve Dependencies',key='autoResolveDependencies', default=settings['autoResolveDependencies']), 
+                    sg.Checkbox('Auto Verify Dependencies', key='autoVerifyDependencies', default=settings['autoVerifyDependencies']),
+                    sg.Checkbox('Auto Close Dependencies Window', key='autoCloseDependenciesWindow', default=settings['autoCloseDependenciesWindow'])],
+                [sg.Checkbox('Auto Close Cache Window', key='autoCloseCacheWindow', default=settings['autoCloseCacheWindow'])]]
 
-layout = [[sg.TabGroup([[sg.Tab('Start', tab_start), sg.Tab('Operations', tab_operations), sg.Tab('Settings', tab_settings)]])], [sg.Column(columns[0]),sg.Column(columns[1]),sg.VerticalSeparator(),sg.Column(columns[2]),sg.Column(columns[3])]]
+layout = [[sg.TabGroup([[sg.Tab('Start', tab_start), sg.Tab('Operations', tab_operations), sg.Tab('Settings', tab_settings)]],expand_x=True)], [sg.Column(columns[0]),sg.Column(columns[1]),sg.VerticalSeparator(),sg.Column(columns[2]),sg.Column(columns[3])]]
 
 
 win = sg.Window('MC Mod Tester', layout=layout)
@@ -281,6 +362,8 @@ while True:
         if selection == 'Yes':
             if values['modloader'] == 'Forge':
                 cacheAllForge()
+            elif values['modloader'] == 'Fabric':
+                cacheAllFabric()
             updateFilelists()
     
     elif event == 'Reset Keep Flags':
@@ -292,6 +375,13 @@ while True:
     elif event == 'Verify Dependencies':
         verifyDependencies()
         updateFilelists()
+
+    elif event == 'apply_settings':
+        settings['autoResolveDependencies'] = values['autoResolveDependencies']
+        settings['autoVerifyDependencies'] = values['autoVerifyDependencies']
+        settings['autoCloseDependenciesWindow'] = values['autoCloseDependenciesWindow']
+
+        settings['autoCloseCacheWindow'] = values['autoCloseCacheWindow']
 
     elif event == 'Save...':
         filename = sg.PopupGetFile('Choose a file to save your state.', save_as=True, default_extension='.csv', file_types=[("CSV Files",(".csv"))])
