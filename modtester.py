@@ -23,7 +23,7 @@ try:
 except FileExistsError:
     pass 
 
-MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='/home/mason/Downloads/ATM6-1.8.19-server/mods')
+MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='')
 if MOD_PATH == None or MOD_PATH == '':
     print("Cancelled.")
     quit()
