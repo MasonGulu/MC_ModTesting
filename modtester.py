@@ -9,7 +9,7 @@ import json
 
 EXTRACTED_TOML_DIR = 'extractedTomls/'
 DISABLED_MODS_DIR = 'inactiveMods/'
-VERSION = '0.30'
+VERSION = '0.40'
 
 sg.theme('SystemDefault')
 
