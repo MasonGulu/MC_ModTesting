@@ -355,7 +355,6 @@ win = sg.Window('MC Mod Tester', layout=layout)
 
 win.finalize()
 updateFilelists()
-cacheAllForge()
 
 while True:
     event, values = win.read()
@@ -407,14 +406,17 @@ while True:
             with open(filename, 'w') as csvfile:
                 w = csv.writer(csvfile)
                 temp = []
-                for x in mod_id_cache:
-                    temp.append(x)
-                    temp.append(mod_id_cache[x]['keepFlag'])
-                w.writerow(temp)
-                temp = []
                 for x in mods_last_swapped:
                     temp.append(x)
                 w.writerow(temp)
+                for x in mod_id_cache:
+                    temp = []
+                    temp.append(x)
+                    temp.append(mod_id_cache[x]['keepFlag'])
+                    temp.append(mod_id_cache[x]['filename'])
+                    for y in mod_id_cache[x]['dependencies']:
+                        temp.append(y)
+                    w.writerow(temp)
 
     elif event == 'Load...':
         filename = sg.PopupGetFile('Choose a file to load a state.',default_extension='.csv', file_types=[("CSV Files",(".csv"))])
@@ -425,13 +427,17 @@ while True:
                     temp = []
                     for row in r:
                         temp.append(row)
-                    for x in range(0, len(temp[0]), 2):
-                        mod_id_cache[temp[0][x]]['keepFlag'] = (temp[0][x+1] == 'True')
-                    mods_last_swapped = []
-                    for x in temp[1]:
+                    for x in temp[0]:
                         mods_last_swapped.append(x)
-            except:
-                print("!! An issue occured loading!")
+                    for y in range(1, len(temp)):
+                        mod_filename_cache[temp[y][2]] = {'modId': temp[y][0], 'filename': temp[y][2], 'keepFlag': (temp[y][1] == 'True'), 'dependencies': []}
+                        for z in range(3, len(temp[y])):
+                            mod_filename_cache[temp[y][2]]['dependencies'].append(temp[y][z])
+                        mod_id_cache[temp[y][0]] = mod_filename_cache[temp[y][2]]
+                    mods_last_swapped = []
+                    
+            except Exception as err:
+                print("!! An issue occured loading!",err)
 
     elif event == 'Enable All':
         addAllMods()
