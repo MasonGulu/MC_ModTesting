@@ -23,7 +23,7 @@ try:
 except FileExistsError:
     pass 
 
-MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='/home/mason//Downloads/Better+Minecraft+Server+Pack+[FABRIC]+v15/Better Minecraft Server Pack [FABRIC] 1.18.1/mods')
+MOD_PATH = sg.PopupGetFolder('Select your mods folder.', default_path='/home/mason/Downloads/ATM6-1.8.19-server/mods')
 if MOD_PATH == None or MOD_PATH == '':
     print("Cancelled.")
     quit()
@@ -63,23 +63,28 @@ def cacheForgeMod(path,modFilename):
     except Exception as temp:
         print('!! Erorr: '+modFilename+' is probably not a forge mod.')
         print(temp)
-        return False
+        return [False,'META-INF/mods.toml does not exist in the mod.']
         # Extract META-INF/mods.toml from the .jar file
-    temp = toml.load(EXTRACTED_TOML_DIR+modFilename+'/META-INF/mods.toml')
+    try:
+        temp = toml.load(EXTRACTED_TOML_DIR+modFilename+'/META-INF/mods.toml')
+    except toml.TomlDecodeError as err:
+        return [False, err]
     tempId = temp['mods'][0]['modId']
     # Get the modId from the mods.toml we extracted
     mod_filename_cache[modFilename] = {'modId': tempId, 'dependencies': [], 'filename': modFilename, 'keepFlag': False}
     mod_id_cache[tempId] = mod_filename_cache[modFilename]
     # Set up the filename and id cache.
     try:
-        for mod in temp['dependencies'][mod_filename_cache[modFilename]['modId']]:
+        for mod in temp['dependencies'][tempId]:
             # Iterate every mod in the dependencies list
             if (mod['modId'] not in ('minecraft', 'forge') and mod['mandatory']):
                 # If the requirement is not minecraft or forge, and it's a mandatory dependency then add it to the caches
                 mod_filename_cache[modFilename]['dependencies'].append(mod['modId'])
     except KeyError:
         pass 
-    return True
+    except TypeError:
+        return [False, 'The mod does not follow Forge dependency standards.']
+    return [True,'']
 
 def cacheFabricMod(path,modFilename):
     # This function takes path (the path to the mod file '.minecraft/mods'), and modFilename (the filename of the mod 'example.jar')
@@ -153,8 +158,7 @@ def verifyDependencies():
                     if not addModByID(y):
                         win['warnlist'].print('[ERROR]',y,'required by',x,'not found.')
                         keepWindowOpen = True
-                        dependenciesMet = False
-                        return 
+                        dependenciesMet = False 
                     else:
                         win['warnlist'].print('[INFO]',y,'enabled to meet requirements of',x)
                         activemods.append(y)
@@ -193,7 +197,7 @@ def removeAllMods():
             if (not mod_filename_cache[x]['keepFlag']):
                 os.replace(MOD_PATH+x, DISABLED_MODS_DIR+x)
         except KeyError:
-            sg.PopupNoButtons([x, 'is not cached.'], title='Cache out of date!')
+            sg.PopupNoButtons(x+' is not cached.', title='Cache out of date!')
     if settings['autoVerifyDependencies']:
         verifyDependencies()
 
@@ -224,9 +228,9 @@ def cacheAllForge():
     mod_id_cache = {}
     mods = os.listdir(MOD_PATH)
     dmods = os.listdir(DISABLED_MODS_DIR)
-    layout = [[sg.Text('',key='modname', size=(30,1))],
+    layout = [[sg.Text('',key='modname', expand_x=True)],
                 [sg.ProgressBar(len(mods)+len(dmods), orientation='h', size=(30,20),key='bar')],
-                [sg.Multiline(key='warnlist',size=(40,10))]]
+                [sg.Multiline(key='warnlist',size=(40,10), expand_x=True)]]
     keepWindowOpen = False
     modsCachedSuccessfully = True
     win = sg.Window('Caching Mods...', layout=layout, finalize=True)
@@ -235,16 +239,18 @@ def cacheAllForge():
         i += 1
         win['modname'].update(x)
         win['bar'].UpdateBar(i)
-        if not cacheForgeMod(MOD_PATH,x):
-            win['warnlist'].print('[ERROR]', x, 'is not a Forge Mod')
+        status = cacheForgeMod(MOD_PATH,x)
+        if not status[0]:
+            win['warnlist'].print('[ERROR]', x, 'is not a Forge Mod or an issue occured.', status[1])
             keepWindowOpen = True
             modsCachedSuccessfully = False
     for x in dmods:
         i += 1
         win['modname'].update(x)
         win['bar'].UpdateBar(i)
-        if not cacheForgeMod(DISABLED_MODS_DIR,x):
-            win['warnlist'].print('[ERROR]', x, 'is not a Forge Mod')
+        status = cacheForgeMod(DISABLED_MODS_DIR,x)
+        if not status[0]:
+            win['warnlist'].print('[ERROR]', x, 'is not a Forge Mod or an issue occured.', status[1])
             keepWindowOpen = True
             modsCachedSuccessfully = False 
     if modsCachedSuccessfully:
@@ -259,9 +265,9 @@ def cacheAllFabric():
     mod_id_cache = {}
     mods = os.listdir(MOD_PATH)
     dmods = os.listdir(DISABLED_MODS_DIR)
-    layout = [[sg.Text('',key='modname', size=(30,1))],
+    layout = [[sg.Text('',key='modname', size=(30,1),expand_x=True)],
                 [sg.ProgressBar(len(mods)+len(dmods), orientation='h', size=(30,20),key='bar')],
-                [sg.Multiline(key='warnlist',size=(40,10))]]
+                [sg.Multiline(key='warnlist',size=(40,10),expand_x=True)]]
     keepWindowOpen = False
     modsCachedSuccessfully = True
     win = sg.Window('Caching Mods...', layout=layout, finalize=True)
@@ -331,7 +337,7 @@ columns[3] = [[sg.Text('Filename:')],[sg.Text('',size=(DEFAULT_WIDTH,1),key='ENA
 
 TAB_BUTTON_SIZE = (15,1)
 tab_start = [[sg.Combo(['Forge', 'Fabric'], key='modloader', readonly=True, default_value='Forge',size=TAB_BUTTON_SIZE)],
-            [sg.Button('Refresh Cache', key='Refresh Cache', size=TAB_BUTTON_SIZE), sg.Button('Reset Keep Flags', key='Reset Keep Flags', size=TAB_BUTTON_SIZE)],
+            [sg.Button('Refresh Cache', key='Refresh Cache', size=TAB_BUTTON_SIZE), sg.Button('Reset Keep Flags', key='Reset Keep Flags', size=TAB_BUTTON_SIZE), sg.Button('Manually Cache', key='addcache', size=TAB_BUTTON_SIZE)],
             [sg.Button('Save...', key='Save...', size=TAB_BUTTON_SIZE),sg.Button('Load...', key='Load...',size=TAB_BUTTON_SIZE)]]
 tab_operations = [[sg.Button('Enable All', key='Enable All', size=TAB_BUTTON_SIZE), sg.Button('Disable All', key='Disable All', size=TAB_BUTTON_SIZE)],
                 [sg.Button('Add New Half', key='Add New Half', size=TAB_BUTTON_SIZE), sg.Button('Swap Halves', key='Swap Halves', size=TAB_BUTTON_SIZE)],
@@ -371,6 +377,18 @@ while True:
         if selection == 'Yes':
             for x in mod_filename_cache:
                 mod_filename_cache[x]['keepFlag'] = False
+
+    elif event == 'addcache':
+        # Add a mod to the cache manually
+        tmplayout = [[sg.Text('Filename', size=(10,1)), sg.InputText(key='filename')],
+                    [sg.Text('ModId', size=(10,1)), sg.InputText(key='modId')],
+                    [sg.Button('Cancel'), sg.Button('Submit')]]
+        tmpwin = sg.Window('Manually Add Cache Item', layout=tmplayout)
+        events, values = tmpwin.read()
+        if events == 'Submit':
+            mod_filename_cache[values['filename']] = {'modId':values['modId'], 'filename':values['filename'], 'dependencies':[], 'keepFlag': False}
+            mod_id_cache[values['modId']] = mod_filename_cache[values['filename']]
+        tmpwin.close()
 
     elif event == 'Verify Dependencies':
         verifyDependencies()
