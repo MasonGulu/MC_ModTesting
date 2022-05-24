@@ -184,7 +184,9 @@ def swap():
         temp.append(x)
     for x in mods_last_swapped:
         os.replace(MOD_PATH+x, DISABLED_MODS_DIR+x)
-    mods_last_swapped = temp
+    mods_last_swapped = []
+    for x in temp:
+        mods_last_swapped.append(x)
     if settings['autoVerifyDependencies']:
         verifyDependencies()
 
